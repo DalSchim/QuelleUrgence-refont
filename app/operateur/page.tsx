@@ -1,163 +1,81 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { SPECIALTIES, CreateDossierResponse } from '@/types/triage';
-import UrgencyBadge from '@/components/triage/UrgencyBadge';
+import { useState } from 'react';
+import { CreateOperatorCallInput } from '@/types/operator';
+import OperatorCallForm from '@/components/operateur/OperatorCallForm';
+import styles from './page.module.scss';
 
-const COMMON_SYMPTOMS = [
-  'Douleur thoracique',
-  'Essoufflement',
-  'Douleur abdominale',
-  'Maux de tête sévères',
-  'Perte de conscience',
-  'Convulsions',
-  'Paralysie / faiblesse soudaine',
-  'Trouble de la vision',
-  'Trouble de la parole',
-  'Saignement important',
-  'Fièvre élevée (> 39°C)',
-  'Vomissements',
-  'Douleur dorsale',
-  'Douleur articulaire',
-  'Éruption cutanée',
-  'Traumatisme / chute',
-  'Brûlure',
-  'Coupure profonde',
-  'Perte de mémoire soudaine',
-  'Douleur urinaire',
-];
-
-type Step = 'patient' | 'symptoms' | 'location' | 'confirm' | 'result';
-
-interface FormData {
-  firstName: string;
-  lastName: string;
-  age: string;
-  gender: 'homme' | 'femme' | 'autre';
-  phone: string;
-  email: string;
-  symptoms: string[];
-  symptomDescription: string;
-  durationHours: string;
-  hasChronicConditions: boolean;
-  chronicConditions: string;
-  hasAllergies: boolean;
-  allergies: string;
-  latitude: string;
-  longitude: string;
-}
-
-const INITIAL_FORM: FormData = {
-  firstName: '',
-  lastName: '',
-  age: '',
-  gender: 'homme',
-  phone: '',
-  email: '',
-  symptoms: [],
-  symptomDescription: '',
-  durationHours: '',
-  hasChronicConditions: false,
-  chronicConditions: '',
-  hasAllergies: false,
-  allergies: '',
-  latitude: '',
-  longitude: '',
+// Define steps and step labels
+const steps = ['patient', 'symptoms', 'result'] as const;
+const stepLabels: Record<typeof steps[number], string> = {
+  patient: 'Informations Patient',
+  symptoms: 'Symptômes',
+  result: 'Résultat',
 };
 
+// Define common symptoms
+const COMMON_SYMPTOMS = ['Fièvre', 'Toux', 'Douleur', 'Fatigue'];
+
 export default function OperateurPage() {
-  const [step, setStep] = useState<Step>('patient');
-  const [form, setForm] = useState<FormData>(INITIAL_FORM);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<CreateDossierResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
+  const [step, setStep] = useState<typeof steps[number]>('patient');
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    age: '',
+    gender: 'homme',
+    phone: '',
+    email: '',
+    symptoms: [] as string[],
+    symptomDescription: '',
+    durationHours: '',
+    hasChronicConditions: false,
+  });
 
-  useEffect(() => {
-    if (step === 'location' && !form.latitude) {
-      locateUser();
-    }
-  }, [step]);
-
-  function locateUser() {
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        setForm(f => ({
-          ...f,
-          latitude: String(pos.coords.latitude),
-          longitude: String(pos.coords.longitude),
-        }));
-        setLocating(false);
-      },
-      () => setLocating(false)
-    );
-  }
-
-  function toggleSymptom(s: string) {
-    setForm(f => ({
-      ...f,
-      symptoms: f.symptoms.includes(s) ? f.symptoms.filter(x => x !== s) : [...f.symptoms, s],
+  const toggleSymptom = (symptom: string) => {
+    setForm((prev) => ({
+      ...prev,
+      symptoms: prev.symptoms.includes(symptom)
+        ? prev.symptoms.filter((s) => s !== symptom)
+        : [...prev.symptoms, symptom],
     }));
-  }
+  };
 
-  async function handleSubmit() {
-    setLoading(true);
+  const handleFormSubmit = async (callData: CreateOperatorCallInput) => {
     setError(null);
+    setLoading(true);
+
     try {
-      const res = await fetch('/api/triage', {
+      // TODO: Remplacer par le vrai ID de l'opérateur connecté
+      const operatorId = 'current-operator-id';
+
+      const response = await fetch('/api/operators/calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          patient: {
-            firstName: form.firstName,
-            lastName: form.lastName,
-            age: parseInt(form.age),
-            gender: form.gender,
-            phone: form.phone,
-            email: form.email,
-          },
-          symptoms: form.symptoms,
-          symptomDescription: form.symptomDescription,
-          durationHours: parseInt(form.durationHours) || 1,
-          hasChronicConditions: form.hasChronicConditions,
-          chronicConditions: form.chronicConditions,
-          hasAllergies: form.hasAllergies,
-          allergies: form.allergies,
-          latitude: parseFloat(form.latitude),
-          longitude: parseFloat(form.longitude),
+          ...callData,
+          operatorId,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Erreur inconnue');
-      setResult(data);
-      setStep('result');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erreur lors de la création du dossier');
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Erreur lors de l\'enregistrement');
+      }
+
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 5000);
+
+      console.log('Appel enregistré avec succès');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue');
     } finally {
       setLoading(false);
     }
-  }
-
-  function reset() {
-    setForm(INITIAL_FORM);
-    setResult(null);
-    setError(null);
-    setStep('patient');
-  }
-
-  const steps: Step[] = ['patient', 'symptoms', 'location', 'confirm'];
-  const stepLabels: Record<Step, string> = {
-    patient: 'Patient',
-    symptoms: 'Symptômes',
-    location: 'Localisation',
-    confirm: 'Confirmation',
-    result: 'Résultat',
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#1a1a2e] text-white px-6 py-4 flex items-center gap-4">
+    <div className={styles.container}>
+      <header className="text-white px-6 py-4 flex items-center gap-4">
         <div>
           <h1 className="text-xl font-bold">QuelleUrgence — Interface Opérateur</h1>
           <p className="text-sm text-gray-400">Formulaire de triage médical</p>
